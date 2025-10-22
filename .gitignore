@@ -27,6 +27,7 @@ logs/
 .coverage
 htmlcov/
 *.log
+test_db.py
 
 # Файлы IDE (примеры)
 .vscode/
