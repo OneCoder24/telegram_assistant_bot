@@ -1,0 +1,23 @@
+telegram_assistant_bot/
+│
+├── bot.py                  # Основной файл бота (aiogram, обработчики)
+├── config.py               # Конфигурация (токен, города, время и т.д.)
+├── logger_config.py        # Настройка ротации логов (2 файла)
+├── database.py             # Взаимодействие с базой данных (SQLite)
+├── modules/                # Папка для модулей
+│   ├── __init__.py
+│   ├── notes.py            # Логика Заметок
+│   ├── tasks.py            # Логика Задач
+│   ├── reminders.py        # Логика Напоминаний
+│   ├── weather.py          # Логика Погоды
+│   ├── settings.py         # Логика Настроек
+│   └── master_message.py   # Логика Мастер-сообщений
+├── utils/                  # Вспомогательные функции
+│   ├── __init__.py
+│   ├── datetime_parser.py  # Парсер дат/времени
+│   ├── weather_api.py      # Взаимодействие с Open-Meteo
+│   └── speech_to_text.py   # Расшифровка голоса
+├── logs/                   # Папка для логов
+│   ├── bot_log_1.log
+│   └── bot_log_2.log
+└── requirements.txt        # Зависимости

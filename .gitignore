@@ -1,0 +1,36 @@
+# Виртуальные окружения Python
+venv/
+.venv/
+env/
+.ENV/
+
+# Кэшированные файлы Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.pyc
+*.pyo
+
+# База данных SQLite
+bot_database.db
+
+# Логи
+logs/
+
+# Файлы конфигурации с токенами (если используешь .env)
+.env
+
+# Кэши инструментов разработки
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# Файлы IDE (примеры)
+.vscode/
+.idea/
+*.swp
+*.swo
+
