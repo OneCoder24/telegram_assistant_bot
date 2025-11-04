@@ -27,6 +27,7 @@ logs/
 .coverage
 htmlcov/
 *.log
+temp/
 test_db.py
 
 # Файлы IDE (примеры)
