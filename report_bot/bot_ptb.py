@@ -26,7 +26,8 @@ from services.scheduler import (
     shutdown_scheduler,
     schedule_daily_reports,
     send_daily_report,
-    add_reminder_checker
+    add_reminder_checker,
+    add_health_check
 )
 from handlers.reminders import (
     cmd_add_reminder,
@@ -657,6 +658,10 @@ async def post_init(application: Application) -> None:
     # Добавляем проверку напоминаний
     add_reminder_checker(application.bot)
     logger.info("Проверка напоминаний активирована")
+    
+    # Добавляем проверку здоровья
+    add_health_check(application.bot)
+    logger.info("Проверка здоровья активирована")
 
 
 async def post_shutdown(application: Application) -> None:
@@ -680,43 +685,60 @@ def main() -> None:
         logger.error("Создайте .env файл на основе .env.example и заполните все необходимые значения")
         sys.exit(1)
     
-    # Создаём приложение
-    application = Application.builder().token(Config.BOT_TOKEN).post_init(post_init).post_shutdown(post_shutdown).build()
-    
-    # Регистрируем обработчики команд
-    application.add_handler(CommandHandler("start", cmd_start))
-    application.add_handler(CommandHandler("help", cmd_help))
-    application.add_handler(CommandHandler("list", cmd_list))
-    application.add_handler(CommandHandler("clear", cmd_clear))
-    application.add_handler(CommandHandler("settime", cmd_settime))
-    application.add_handler(CommandHandler("report", cmd_report))
-    
-    # Регистрируем обработчики callback-кнопок
-    application.add_handler(CallbackQueryHandler(callback_clear_confirm, pattern="^clear_confirm$"))
-    application.add_handler(CallbackQueryHandler(callback_clear_cancel, pattern="^clear_cancel$"))
-    application.add_handler(CallbackQueryHandler(callback_delete_note, pattern=r"^delete_note_\d+$"))
-    application.add_handler(CallbackQueryHandler(callback_edit_note, pattern=r"^edit_note_\d+$"))
-    application.add_handler(CallbackQueryHandler(callback_delete_reminder, pattern=r"^delete_reminder_\d+$"))
-    application.add_handler(CallbackQueryHandler(callback_task_complete, pattern=r"^task_complete_\d+$"))
-    application.add_handler(CallbackQueryHandler(callback_task_edit, pattern=r"^task_edit_\d+$"))
-    application.add_handler(CallbackQueryHandler(callback_task_delete, pattern=r"^task_delete_\d+$"))
-    application.add_handler(CallbackQueryHandler(callback_survey_include, pattern=r"^survey_include_\d+$"))
-    application.add_handler(CallbackQueryHandler(callback_survey_skip_all, pattern="^survey_skip_all$"))
-    
-    # Регистрируем обработчики заметок (порядок важен!)
-    application.add_handler(MessageHandler(filters.VOICE, handle_voice_note))
-    application.add_handler(MessageHandler(filters.PHOTO, handle_photo_note))
-    
-    # Регистрируем обработчики кнопок меню (до обычных заметок!)
-    application.add_handler(MessageHandler(filters.Regex("^(📋 Отчёт|📝 Заметки|🗑 Очистить всё|⏰ Напоминания|➕ Добавить напоминание|✅ Задачи|➕ Добавить задачу|⚙️ Настройки)$"), handle_menu_button))
-    
-    # Обычные текстовые заметки (должны быть последними!)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_note))
-    
-    logger.info("Бот запущен")
-    
-    # Запускаем polling (этот метод сам управляет event loop)
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Цикл с автоперезапуском при сбоях
+    while True:
+        try:
+            # Создаём приложение
+            application = Application.builder().token(Config.BOT_TOKEN).post_init(post_init).post_shutdown(post_shutdown).build()
+            
+            # Регистрируем обработчики команд
+            application.add_handler(CommandHandler("start", cmd_start))
+            application.add_handler(CommandHandler("help", cmd_help))
+            application.add_handler(CommandHandler("list", cmd_list))
+            application.add_handler(CommandHandler("clear", cmd_clear))
+            application.add_handler(CommandHandler("settime", cmd_settime))
+            application.add_handler(CommandHandler("report", cmd_report))
+            
+            # Регистрируем обработчики callback-кнопок
+            application.add_handler(CallbackQueryHandler(callback_clear_confirm, pattern="^clear_confirm$"))
+            application.add_handler(CallbackQueryHandler(callback_clear_cancel, pattern="^clear_cancel$"))
+            application.add_handler(CallbackQueryHandler(callback_delete_note, pattern=r"^delete_note_\d+$"))
+            application.add_handler(CallbackQueryHandler(callback_edit_note, pattern=r"^edit_note_\d+$"))
+            application.add_handler(CallbackQueryHandler(callback_delete_reminder, pattern=r"^delete_reminder_\d+$"))
+            application.add_handler(CallbackQueryHandler(callback_task_complete, pattern=r"^task_complete_\d+$"))
+            application.add_handler(CallbackQueryHandler(callback_task_edit, pattern=r"^task_edit_\d+$"))
+            application.add_handler(CallbackQueryHandler(callback_task_delete, pattern=r"^task_delete_\d+$"))
+            application.add_handler(CallbackQueryHandler(callback_survey_include, pattern=r"^survey_include_\d+$"))
+            application.add_handler(CallbackQueryHandler(callback_survey_skip_all, pattern="^survey_skip_all$"))
+            
+            # Регистрируем обработчики заметок (порядок важен!)
+            application.add_handler(MessageHandler(filters.VOICE, handle_voice_note))
+            application.add_handler(MessageHandler(filters.PHOTO, handle_photo_note))
+            
+            # Регистрируем обработчики кнопок меню (до обычных заметок!)
+            application.add_handler(MessageHandler(filters.Regex("^(📋 Отчёт|📝 Заметки|🗑 Очистить всё|⏰ Напоминания|➕ Добавить напоминание|✅ Задачи|➕ Добавить задачу|⚙️ Настройки)$"), handle_menu_button))
+            
+            # Обычные текстовые заметки (должны быть последними!)
+            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_note))
+            
+            logger.info("Бот запущен")
+            
+            # Запускаем polling с таймаутом для предотвращения зависания
+            application.run_polling(
+                allowed_updates=Update.ALL_TYPES,
+                drop_pending_updates=True,
+                close_loop=False
+            )
+            
+        except KeyboardInterrupt:
+            logger.info("Бот остановлен пользователем")
+            break
+        except Exception as e:
+            logger.error(f"Критическая ошибка бота: {e}")
+            logger.info("Перезапуск через 5 секунд...")
+            import time
+            time.sleep(5)
+            continue
 
 
 if __name__ == "__main__":

@@ -1,0 +1,21 @@
+[Unit]
+Description=Telegram Report Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/telegram_assistant_bot/report_bot
+Environment="PATH=/root/telegram_assistant_bot/report_bot/venv/bin"
+ExecStart=/root/telegram_assistant_bot/report_bot/venv/bin/python bot_ptb.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Оптимизация для стабильной работы
+WatchdogSec=60
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

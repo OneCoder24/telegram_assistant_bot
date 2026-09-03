@@ -254,6 +254,29 @@ def add_reminder_checker(bot: Bot) -> None:
     logger.info("Добавлена задача проверки напоминаний (каждые 30 секунд)")
 
 
+async def health_check(bot: Bot) -> None:
+    """Периодическая проверка активности бота"""
+    try:
+        # Простой вызов API для поддержания соединения
+        await bot.get_me()
+        logger.debug("Health check: OK")
+    except Exception as e:
+        logger.warning(f"Health check failed: {e}")
+
+
+def add_health_check(bot: Bot) -> None:
+    """Добавляет задачу проверки здоровья каждые 5 минут"""
+    scheduler.add_job(
+        health_check,
+        trigger=IntervalTrigger(minutes=5),
+        args=[bot],
+        id="health_check",
+        name="Bot health check",
+        replace_existing=True
+    )
+    logger.info("Добавлена задача проверки здоровья (каждые 5 минут)")
+
+
 def shutdown_scheduler() -> None:
     """Останавливает планировщик задач"""
     if scheduler.running:
