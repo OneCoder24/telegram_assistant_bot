@@ -688,8 +688,28 @@ def main() -> None:
     # Цикл с автоперезапуском при сбоях
     while True:
         try:
-            # Создаём приложение
-            application = Application.builder().token(Config.BOT_TOKEN).post_init(post_init).post_shutdown(post_shutdown).build()
+            # Импортируем httpx для настройки таймаутов
+            from telegram.request import HTTPXRequest
+            import httpx
+            
+            # Настраиваем httpx с увеличенными таймаутами и размером пула
+            httpx_request = HTTPXRequest(
+                connection_pool_size=100,  # Увеличенный пул соединений
+                pool_timeout=60.0,         # Таймаут ожидания соединения (сек)
+                connect_timeout=30.0,      # Таймаут установки соединения
+                read_timeout=60.0,         # Таймаут чтения ответа
+                write_timeout=30.0,        # Таймаут отправки данных
+            )
+            
+            # Создаём приложение с кастомным request
+            application = (
+                Application.builder()
+                .token(Config.BOT_TOKEN)
+                .request(httpx_request)
+                .post_init(post_init)
+                .post_shutdown(post_shutdown)
+                .build()
+            )
             
             # Регистрируем обработчики команд
             application.add_handler(CommandHandler("start", cmd_start))
