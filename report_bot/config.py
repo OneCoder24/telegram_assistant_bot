@@ -5,8 +5,8 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Загружаем .env из корня проекта
-load_dotenv(Path(__file__).parent.parent / ".env")
+# Загружаем .env из той же директории, где находится config.py
+load_dotenv(Path(__file__).parent / ".env")
 
 
 class Config:
