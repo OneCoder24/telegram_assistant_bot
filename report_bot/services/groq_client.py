@@ -20,6 +20,8 @@ class GroqClient:
         self.api_key = Config.GROQ_API_KEY
         self.base_url = Config.GROQ_BASE_URL
         self.timeout = Config.API_TIMEOUT
+        # Локальный прокси Xray, который мы настроили на порту 10809
+        self.proxy_url = "http://127.0.0.1:10809"
     
     async def generate_report(self, system_prompt: str, notes_text: str) -> Optional[str]:
         """
@@ -50,7 +52,8 @@ class GroqClient:
         }
         
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            # Добавлен параметр proxies
+            async with httpx.AsyncClient(timeout=self.timeout, proxies=self.proxy_url) as client:
                 response = await client.post(url, json=payload, headers=headers)
                 response.raise_for_status()
                 
@@ -84,7 +87,8 @@ class GroqClient:
         }
         
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            # Добавлен параметр proxies
+            async with httpx.AsyncClient(timeout=self.timeout, proxies=self.proxy_url) as client:
                 with open(audio_file_path, "rb") as audio_file:
                     files = {"file": ("voice.ogg", audio_file, "audio/ogg")}
                     data = {"model": Config.GROQ_WHISPER_MODEL}
