@@ -38,7 +38,8 @@ async def init_db() -> None:
         
         CREATE TABLE IF NOT EXISTS settings (
             user_id INTEGER PRIMARY KEY,
-            report_time TEXT NOT NULL DEFAULT '18:00'
+            report_time TEXT NOT NULL DEFAULT '18:00',
+            morning_tasks_time TEXT NOT NULL DEFAULT '08:50'
         );
         
         CREATE TABLE IF NOT EXISTS reminders (
@@ -341,11 +342,35 @@ async def set_report_time(user_id: int, time_str: str) -> None:
     await db.commit()
 
 
+async def get_morning_tasks_time(user_id: int) -> str:
+    """Получает настроенное время утреннего списка задач"""
+    db = _get_db()
+    cursor = await db.execute(
+        "SELECT morning_tasks_time FROM settings WHERE user_id = ?",
+        (user_id,)
+    )
+    row = await cursor.fetchone()
+    return row["morning_tasks_time"] if row else "08:50"
+
+
+async def set_morning_tasks_time(user_id: int, time_str: str) -> None:
+    """Устанавливает время утреннего списка задач"""
+    db = _get_db()
+    await db.execute(
+        """INSERT INTO settings (user_id, morning_tasks_time) VALUES (?, ?)
+           ON CONFLICT(user_id) DO UPDATE SET morning_tasks_time = excluded.morning_tasks_time""",
+        (user_id, time_str)
+    )
+    await db.commit()
+
+
 async def get_all_users_with_settings() -> list[dict]:
     """Получает всех пользователей с их настройками времени"""
     db = _get_db()
     cursor = await db.execute(
-        """SELECT DISTINCT n.user_id, COALESCE(s.report_time, ?) as report_time
+        """SELECT DISTINCT n.user_id, 
+                  COALESCE(s.report_time, ?) as report_time,
+                  COALESCE(s.morning_tasks_time, '08:50') as morning_tasks_time
            FROM notes n
            LEFT JOIN settings s ON n.user_id = s.user_id""",
         (Config.DEFAULT_REPORT_TIME,)

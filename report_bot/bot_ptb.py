@@ -99,6 +99,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Список команд с описаниями"""
     user_id = update.effective_user.id
     current_time = await db.get_report_time(user_id)
+    morning_time = await db.get_morning_tasks_time(user_id)
     
     help_text = f"""
 📋 <b>Доступные команды:</b>
@@ -113,8 +114,11 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 /list — Заметки за сегодня (без LLM)
 /clear — Удалить заметки за сегодня
 
-/settime HH:MM — Установить время автоотправки
+/settime HH:MM — Установить время автоотправки отчёта
 Текущее время: {current_time}
+
+/setmorningtime HH:MM — Установить время утреннего списка задач
+Текущее время: {morning_time}
 
 💡 <b>Совет:</b> просто пиши текст или отправляй голосовые — всё сохранится!
 """
@@ -323,6 +327,39 @@ async def cmd_settime(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await db.set_report_time(user_id, time_str)
     await update.message.reply_text(f"✅ Время автоотправки отчёта установлено: {time_str}")
     logger.info(f"Пользователь {user_id} установил время отчёта: {time_str}")
+
+
+async def cmd_setmorningtime(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Установка времени утреннего списка задач"""
+    import re
+    user_id = update.effective_user.id
+    
+    # Парсим аргументы команды
+    if not context.args:
+        current_time = await db.get_morning_tasks_time(user_id)
+        await update.message.reply_text(
+            f"⏰ Укажи время в формате HH:MM\n"
+            f"Текущее время утреннего списка задач: {current_time}\n\n"
+            f"Пример: /setmorningtime 08:50"
+        )
+        return
+    
+    time_str = context.args[0].strip()
+    
+    # Проверяем формат времени
+    if not re.match(r"^\d{2}:\d{2}$", time_str):
+        await update.message.reply_text("❌ Неверный формат. Используй HH:MM (например, 08:50)")
+        return
+    
+    hours, minutes = map(int, time_str.split(":"))
+    if not (0 <= hours <= 23 and 0 <= minutes <= 59):
+        await update.message.reply_text("❌ Неверное время. Часы: 00-23, минуты: 00-59")
+        return
+    
+    # Сохраняем в БД
+    await db.set_morning_tasks_time(user_id, time_str)
+    await update.message.reply_text(f"✅ Время утреннего списка задач установлено: {time_str}")
+    logger.info(f"Пользователь {user_id} установил время утренних задач: {time_str}")
 
 
 async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -717,6 +754,7 @@ def main() -> None:
             application.add_handler(CommandHandler("list", cmd_list))
             application.add_handler(CommandHandler("clear", cmd_clear))
             application.add_handler(CommandHandler("settime", cmd_settime))
+            application.add_handler(CommandHandler("setmorningtime", cmd_setmorningtime))
             application.add_handler(CommandHandler("report", cmd_report))
             
             # Регистрируем обработчики callback-кнопок

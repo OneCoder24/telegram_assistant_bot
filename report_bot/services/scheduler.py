@@ -123,6 +123,50 @@ async def send_daily_report(bot: Bot, user_id: int) -> None:
         logger.error(f"Ошибка при отправке ежедневного отчёта пользователю {user_id}: {e}")
 
 
+async def send_morning_tasks(bot: Bot, user_id: int) -> None:
+    """Отправляет список всех задач пользователю утром"""
+    try:
+        # Получаем все задачи пользователя
+        tasks = await db.get_all_tasks(user_id)
+        
+        if not tasks:
+            logger.info(f"У пользователя {user_id} нет задач — утренний список не отправлен")
+            return
+        
+        # Формируем список задач
+        lines = ["☀️ <b>Доброе утро! Ваши задачи:</b>\n"]
+        
+        # Разделяем на выполненные и невыполненные
+        pending_tasks = [t for t in tasks if not t["completed"]]
+        completed_tasks = [t for t in tasks if t["completed"]]
+        
+        if pending_tasks:
+            lines.append("\n<b>⏳ Невыполненные:</b>")
+            for task in pending_tasks:
+                created = datetime.fromisoformat(task["created_at"]).strftime("%d.%m")
+                lines.append(f"• #{task['id']} <code>{created}</code> — {task['text']}")
+        
+        if completed_tasks:
+            lines.append("\n<b>✅ Выполненные:</b>")
+            for task in completed_tasks:
+                completed_time = datetime.fromisoformat(task["completed_at"]).strftime("%d.%m %H:%M") if task.get("completed_at") else ""
+                lines.append(f"• #{task['id']} <code>{completed_time}</code> — {task['text']}")
+        
+        lines.append(f"\n<i>Всего: {len(tasks)} задач</i>")
+        
+        # Отправляем список
+        await bot.send_message(
+            chat_id=user_id,
+            text="\n".join(lines),
+            parse_mode="HTML"
+        )
+        
+        logger.info(f"Отправлен утренний список задач пользователю {user_id}")
+        
+    except Exception as e:
+        logger.error(f"Ошибка при отправке утренних задач пользователю {user_id}: {e}")
+
+
 async def check_and_send_reminders(bot: Bot) -> None:
     """Проверяет и отправляет напоминания, которые пора отправить"""
     try:
@@ -154,7 +198,7 @@ async def check_and_send_reminders(bot: Bot) -> None:
 
 async def schedule_daily_reports(bot: Bot) -> None:
     """
-    Настраивает расписание отправки отчётов для всех пользователей.
+    Настраивает расписание отправки отчётов и утренних задач для всех пользователей.
     Читает настройки времени из БД и создаёт задачи для каждого пользователя.
     """
     try:
@@ -163,8 +207,9 @@ async def schedule_daily_reports(bot: Bot) -> None:
         for user in users:
             user_id = user["user_id"]
             report_time = user["report_time"]
+            morning_tasks_time = user["morning_tasks_time"]
             
-            # Парсим время (формат HH:MM)
+            # Парсим время отчёта (формат HH:MM)
             hour, minute = map(int, report_time.split(":"))
             
             # Создаём задачу для отправки опросника за 10 минут до отчёта
@@ -193,12 +238,25 @@ async def schedule_daily_reports(bot: Bot) -> None:
                 replace_existing=True
             )
             
-            logger.info(f"Запланированы опросник и отчёт для пользователя {user_id} на {report_time}")
+            # Парсим время утренних задач (формат HH:MM)
+            morning_hour, morning_minute = map(int, morning_tasks_time.split(":"))
+            
+            # Создаём задачу для отправки утренних задач
+            scheduler.add_job(
+                send_morning_tasks,
+                trigger=CronTrigger(hour=morning_hour, minute=morning_minute),
+                args=[bot, user_id],
+                id=f"morning_tasks_{user_id}",
+                name=f"Morning tasks for user {user_id}",
+                replace_existing=True
+            )
+            
+            logger.info(f"Запланированы утренние задачи ({morning_tasks_time}), опросник и отчёт ({report_time}) для пользователя {user_id}")
         
-        logger.info(f"Всего запланировано отчётов: {len(users)}")
+        logger.info(f"Всего запланировано пользователей: {len(users)}")
         
     except Exception as e:
-        logger.error(f"Ошибка при настройке расписания отчётов: {e}")
+        logger.error(f"Ошибка при настройке расписания: {e}")
 
 
 async def update_user_schedule(bot: Bot, user_id: int, new_time: str) -> None:
