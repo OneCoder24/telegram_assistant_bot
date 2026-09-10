@@ -681,6 +681,10 @@ async def handle_photo_note(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 async def post_init(application: Application) -> None:
     """Действия после инициализации приложения"""
+    # Выполняем миграцию базы данных
+    from migrate_db import migrate_database
+    migrate_database()
+    
     # Инициализируем базу данных
     await db.init_db()
     logger.info("База данных инициализирована")
