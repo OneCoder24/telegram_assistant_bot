@@ -33,6 +33,18 @@ def migrate_database(db_path: str = "bot.db") -> None:
         else:
             logger.info("Колонка morning_tasks_time уже существует")
         
+        # Проверяем существование колонки report_type в таблице reports
+        cursor.execute("PRAGMA table_info(reports)")
+        reports_columns = [row[1] for row in cursor.fetchall()]
+        
+        if "report_type" not in reports_columns:
+            logger.info("Добавляю колонку report_type в таблицу reports")
+            conn.execute('ALTER TABLE reports ADD COLUMN report_type TEXT NOT NULL DEFAULT "daily"')
+            conn.commit()
+            logger.info("Колонка report_type добавлена успешно")
+        else:
+            logger.info("Колонка report_type уже существует")
+        
         conn.close()
         
     except Exception as e:

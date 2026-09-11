@@ -20,7 +20,7 @@ from telegram.ext import (
 
 from config import Config, validate_config
 import database as db
-from services.groq_client import GroqClient, load_report_prompt
+from services.groq_client import GroqClient, load_report_prompt, load_weekly_report_prompt
 from services.scheduler import (
     start_scheduler,
     shutdown_scheduler,
@@ -64,6 +64,138 @@ groq_client = GroqClient()
 
 # === Обработчики команд ===
 
+async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показывает главное меню с разделами Работа и Личное"""
+    keyboard = [
+        [
+            InlineKeyboardButton("💼 Работа", callback_data="menu_work"),
+            InlineKeyboardButton("🏠 Личное", callback_data="menu_personal")
+        ],
+        [
+            InlineKeyboardButton("⚙️ Настройки", callback_data="menu_settings"),
+            InlineKeyboardButton("📊 История отчётов", callback_data="menu_history")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    text = "🏠 <b>Главное меню</b>\n\nВыберите раздел:"
+    
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
+
+
+async def show_work_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показывает меню раздела Работа"""
+    keyboard = [
+        [
+            InlineKeyboardButton("📋 Отчёт за день", callback_data="work_daily_report"),
+            InlineKeyboardButton("📊 Еженедельный отчёт", callback_data="work_weekly_report")
+        ],
+        [
+            InlineKeyboardButton("📝 Заметки", callback_data="work_notes"),
+            InlineKeyboardButton("✅ Рабочие задачи", callback_data="work_tasks")
+        ],
+        [
+            InlineKeyboardButton("➕ Добавить задачу", callback_data="work_add_task")
+        ],
+        [
+            InlineKeyboardButton("◀️ Назад", callback_data="menu_main")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    text = "💼 <b>Работа</b>\n\nВыберите действие:"
+    await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=reply_markup)
+
+
+async def show_personal_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показывает меню раздела Личное"""
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Задачи", callback_data="personal_tasks"),
+            InlineKeyboardButton("⏰ Напоминания", callback_data="personal_reminders")
+        ],
+        [
+            InlineKeyboardButton("➕ Добавить задачу", callback_data="personal_add_task"),
+            InlineKeyboardButton("➕ Добавить напоминание", callback_data="personal_add_reminder")
+        ],
+        [
+            InlineKeyboardButton("◀️ Назад", callback_data="menu_main")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    text = "🏠 <b>Личное</b>\n\nВыберите действие:"
+    await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=reply_markup)
+
+
+async def show_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показывает меню настроек"""
+    user_id = update.callback_query.from_user.id
+    report_time = await db.get_report_time(user_id)
+    morning_time = await db.get_morning_tasks_time(user_id)
+    
+    keyboard = [
+        [
+            InlineKeyboardButton(f"⏰ Время отчёта ({report_time})", callback_data="settings_report_time")
+        ],
+        [
+            InlineKeyboardButton(f"🌅 Утренние задачи ({morning_time})", callback_data="settings_morning_time")
+        ],
+        [
+            InlineKeyboardButton("◀️ Назад", callback_data="menu_main")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    text = "⚙️ <b>Настройки</b>\n\nТекущие настройки:"
+    await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=reply_markup)
+
+
+async def callback_menu_navigation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Обработчик навигации по меню"""
+    query = update.callback_query
+    await query.answer()
+    
+    callback_data = query.data
+    
+    if callback_data == "menu_main":
+        await show_main_menu(update, context)
+    elif callback_data == "menu_work":
+        await show_work_menu(update, context)
+    elif callback_data == "menu_personal":
+        await show_personal_menu(update, context)
+    elif callback_data == "menu_settings":
+        await show_settings_menu(update, context)
+    elif callback_data == "menu_history":
+        await cmd_history(update, context)
+    elif callback_data == "work_daily_report":
+        # Создаём фейковый update для команды /report
+        await cmd_report(update, context)
+    elif callback_data == "work_weekly_report":
+        await cmd_weekly_report(update, context)
+    elif callback_data == "work_notes":
+        await cmd_list(update, context)
+    elif callback_data == "work_tasks":
+        await cmd_list_tasks(update, context)
+    elif callback_data == "work_add_task":
+        await cmd_add_task(update, context)
+    elif callback_data == "personal_tasks":
+        await cmd_list_tasks(update, context)
+    elif callback_data == "personal_reminders":
+        await cmd_list_reminders(update, context)
+    elif callback_data == "personal_add_task":
+        await cmd_add_task(update, context)
+    elif callback_data == "personal_add_reminder":
+        await cmd_add_reminder(update, context)
+    elif callback_data == "settings_report_time":
+        await query.answer("Отправьте /settime HH:MM для изменения времени", show_alert=True)
+    elif callback_data == "settings_morning_time":
+        await query.answer("Отправьте /setmorningtime HH:MM для изменения времени", show_alert=True)
+
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Приветствие и краткая инструкция"""
     welcome_text = """
@@ -74,25 +206,110 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 • Отправь голосовое — я распознаю и сохраню
 • Фото с подписью — подпись сохранится
 
-📋 <b>Команды:</b>
-Используй кнопки ниже или пиши команды вручную!
+📋 <b>Меню:</b>
+Используй кнопки ниже для навигации!
 
 Начни записывать заметки, а я помогу составить отчёт! 🚀
 """
-    
-    # Создаём клавиатуру с основными командами
+
+    # Создаём клавиатуру с основными разделами
     keyboard = ReplyKeyboardMarkup(
         [
-            [KeyboardButton("📋 Отчёт"), KeyboardButton("📝 Заметки")],
-            [KeyboardButton("⏰ Напоминания"), KeyboardButton("➕ Добавить напоминание")],
-            [KeyboardButton("✅ Задачи"), KeyboardButton("➕ Добавить задачу")],
-            [KeyboardButton("🗑 Очистить всё"), KeyboardButton("⚙️ Настройки")]
+            [KeyboardButton("💼 Работа"), KeyboardButton("🏠 Личное")],
+            [KeyboardButton("⚙️ Настройки"), KeyboardButton("📊 История")]
         ],
-        resize_keyboard=True,  # Автоматический размер
-        one_time_keyboard=False  # Постоянная клавиатура
+        resize_keyboard=True,
+        one_time_keyboard=False
+    )
+
+    await update.message.reply_text(welcome_text, parse_mode="HTML", reply_markup=keyboard)
+
+
+async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показывает историю отчётов"""
+    user_id = update.effective_user.id if update.message else update.callback_query.from_user.id
+    
+    # Получаем историю отчётов из БД
+    reports = await db.get_user_reports(user_id, limit=10)
+    
+    if not reports:
+        text = "📊 <b>История отчётов</b>\n\nУ вас пока нет сохранённых отчётов."
+    else:
+        lines = ["📊 <b>История отчётов</b>\n"]
+        for report in reports:
+            report_date = report["date"]
+            lines.append(f"• <code>{report_date}</code> — /report_{report_date}")
+        lines.append("\n<i>Нажмите на дату для просмотра отчёта</i>")
+        text = "\n".join(lines)
+    
+    keyboard = [
+        [InlineKeyboardButton("◀️ Назад", callback_data="menu_main")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
+
+
+async def cmd_weekly_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Генерирует еженедельный отчёт"""
+    user_id = update.effective_user.id if update.message else update.callback_query.from_user.id
+    
+    # Получаем заметки за последнюю неделю
+    from datetime import timedelta
+    today = date.today()
+    week_ago = today - timedelta(days=7)
+    
+    notes = await db.get_notes_by_date_range(user_id, week_ago, today)
+    
+    if not notes:
+        text = "📊 <b>Еженедельный отчёт</b>\n\nЗа последнюю неделю заметок нет."
+        if update.callback_query:
+            await update.callback_query.edit_message_text(text, parse_mode="HTML")
+        else:
+            await update.message.reply_text(text, parse_mode="HTML")
+        return
+    
+    # Формируем текст заметок для промпта
+    notes_lines = []
+    for note in notes:
+        note_date = note["timestamp"][:10]  # YYYY-MM-DD
+        timestamp = note["timestamp"][11:16]  # HH:MM
+        notes_lines.append(f"[{note_date} {timestamp}] {note['text']}")
+    
+    notes_text = "\n".join(notes_lines)
+    
+    # Загружаем промпт для еженедельного отчёта
+    prompt_template = load_weekly_report_prompt()
+    system_prompt = prompt_template.replace("{start_date}", week_ago.strftime("%d.%m.%Y")).replace("{end_date}", today.strftime("%d.%m.%Y"))
+    
+    # Генерируем отчёт через LLM
+    processing_msg = None
+    if update.callback_query:
+        processing_msg = await update.callback_query.edit_message_text("🤖 Генерирую еженедельный отчёт...")
+    else:
+        processing_msg = await update.message.reply_text("🤖 Генерирую еженедельный отчёт...")
+    
+    report_text = await groq_client.generate_report(system_prompt, notes_text)
+    
+    if not report_text:
+        await processing_msg.edit_text("⚠️ Не удалось сгенерировать отчёт. Попробуйте позже.")
+        return
+    
+    # Сохраняем отчёт в БД
+    await db.save_report(user_id, today, report_text, report_type="weekly")
+    
+    # Отправляем отчёт
+    await processing_msg.edit_text(
+        f"📊 <b>Еженедельный отчёт</b>\n"
+        f"<i>Период: {week_ago.strftime('%d.%m.%Y')} - {today.strftime('%d.%m.%Y')}</i>\n\n"
+        f"{report_text}",
+        parse_mode="HTML"
     )
     
-    await update.message.reply_text(welcome_text, parse_mode="HTML", reply_markup=keyboard)
+    logger.info(f"Сгенерирован еженедельный отчёт для пользователя {user_id}")
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -451,34 +668,17 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 # === Обработчики заметок ===
 
 async def handle_menu_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Обработчик кнопок меню"""
+    """Обработчик кнопок главного меню"""
     text = update.message.text
-    
-    if text == "📋 Отчёт":
-        await cmd_report(update, context)
-    elif text == "📝 Заметки":
-        await cmd_list(update, context)
-    elif text == "🗑 Очистить всё":
-        await cmd_clear(update, context)
-    elif text == "⏰ Напоминания":
-        await cmd_list_reminders(update, context)
-    elif text == "➕ Добавить напоминание":
-        await cmd_add_reminder(update, context)
-    elif text == "✅ Задачи":
-        await cmd_list_tasks(update, context)
-    elif text == "➕ Добавить задачу":
-        await cmd_add_task(update, context)
+
+    if text == "💼 Работа":
+        await show_work_menu(update, context)
+    elif text == "🏠 Личное":
+        await show_personal_menu(update, context)
     elif text == "⚙️ Настройки":
-        # Показываем текущие настройки
-        user_id = update.effective_user.id
-        current_time = await db.get_report_time(user_id)
-        await update.message.reply_text(
-            f"⚙️ <b>Настройки:</b>\n\n"
-            f"⏰ Время автоотправки: <code>{current_time}</code>\n\n"
-            f"Чтобы изменить время, отправьте:\n"
-            f"<code>/settime 18:00</code>",
-            parse_mode="HTML"
-        )
+        await show_settings_menu(update, context)
+    elif text == "📊 История":
+        await cmd_history(update, context)
 
 
 async def cmd_delete_last(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -773,12 +973,15 @@ def main() -> None:
             application.add_handler(CallbackQueryHandler(callback_survey_include, pattern=r"^survey_include_\d+$"))
             application.add_handler(CallbackQueryHandler(callback_survey_skip_all, pattern="^survey_skip_all$"))
             
+            # Регистрируем обработчик навигации по меню
+            application.add_handler(CallbackQueryHandler(callback_menu_navigation, pattern=r"^(menu_|work_|personal_|settings_)"))
+            
             # Регистрируем обработчики заметок (порядок важен!)
             application.add_handler(MessageHandler(filters.VOICE, handle_voice_note))
             application.add_handler(MessageHandler(filters.PHOTO, handle_photo_note))
             
-            # Регистрируем обработчики кнопок меню (до обычных заметок!)
-            application.add_handler(MessageHandler(filters.Regex("^(📋 Отчёт|📝 Заметки|🗑 Очистить всё|⏰ Напоминания|➕ Добавить напоминание|✅ Задачи|➕ Добавить задачу|⚙️ Настройки)$"), handle_menu_button))
+            # Регистрируем обработчики кнопок главного меню (до обычных заметок!)
+            application.add_handler(MessageHandler(filters.Regex("^(💼 Работа|🏠 Личное|⚙️ Настройки|📊 История)$"), handle_menu_button))
             
             # Обычные текстовые заметки (должны быть последними!)
             application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_note))

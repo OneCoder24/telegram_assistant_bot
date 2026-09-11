@@ -33,7 +33,8 @@ async def init_db() -> None:
             user_id INTEGER NOT NULL,
             date DATE NOT NULL,
             text TEXT NOT NULL,
-            created_at DATETIME NOT NULL
+            created_at DATETIME NOT NULL,
+            report_type TEXT NOT NULL DEFAULT 'daily'
         );
         
         CREATE TABLE IF NOT EXISTS settings (
@@ -296,12 +297,12 @@ async def delete_task(user_id: int, task_id: int) -> bool:
 
 # === Отчёты ===
 
-async def save_report(user_id: int, report_date: date, text: str) -> int:
+async def save_report(user_id: int, report_date: date, text: str, report_type: str = "daily") -> int:
     """Сохраняет сгенерированный отчёт в БД"""
     db = _get_db()
     cursor = await db.execute(
-        "INSERT INTO reports (user_id, date, text, created_at) VALUES (?, ?, ?, ?)",
-        (user_id, report_date.isoformat(), text, datetime.now().isoformat())
+        "INSERT INTO reports (user_id, date, text, created_at, report_type) VALUES (?, ?, ?, ?, ?)",
+        (user_id, report_date.isoformat(), text, datetime.now().isoformat(), report_type)
     )
     await db.commit()
     return cursor.lastrowid
@@ -316,6 +317,30 @@ async def get_report(user_id: int, report_date: date) -> Optional[str]:
     )
     row = await cursor.fetchone()
     return row["text"] if row else None
+
+
+async def get_user_reports(user_id: int, limit: int = 10) -> list[dict]:
+    """Получает историю отчётов пользователя"""
+    db = _get_db()
+    cursor = await db.execute(
+        "SELECT id, date, report_type, created_at FROM reports WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+        (user_id, limit)
+    )
+    rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+async def get_notes_by_date_range(user_id: int, start_date: date, end_date: date) -> list[dict]:
+    """Получает заметки за период дат"""
+    db = _get_db()
+    cursor = await db.execute(
+        """SELECT id, timestamp, text, type FROM notes 
+           WHERE user_id = ? AND date(timestamp) BETWEEN ? AND ?
+           ORDER BY timestamp ASC""",
+        (user_id, start_date.isoformat(), end_date.isoformat())
+    )
+    rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
 
 
 # === Настройки ===
@@ -367,13 +392,45 @@ async def set_morning_tasks_time(user_id: int, time_str: str) -> None:
 async def get_all_users_with_settings() -> list[dict]:
     """Получает всех пользователей с их настройками времени"""
     db = _get_db()
+    
+    # Получаем всех уникальных пользователей из всех таблиц
     cursor = await db.execute(
-        """SELECT DISTINCT n.user_id, 
-                  COALESCE(s.report_time, ?) as report_time,
-                  COALESCE(s.morning_tasks_time, '08:50') as morning_tasks_time
-           FROM notes n
-           LEFT JOIN settings s ON n.user_id = s.user_id""",
-        (Config.DEFAULT_REPORT_TIME,)
+        """
+        SELECT DISTINCT user_id FROM (
+            SELECT user_id FROM notes
+            UNION
+            SELECT user_id FROM tasks
+            UNION
+            SELECT user_id FROM reminders
+            UNION
+            SELECT user_id FROM settings
+        )
+        """
     )
-    rows = await cursor.fetchall()
-    return [dict(row) for row in rows]
+    user_rows = await cursor.fetchall()
+    
+    if not user_rows:
+        return []
+    
+    users = []
+    for row in user_rows:
+        user_id = row["user_id"]
+        
+        # Получаем настройки для каждого пользователя
+        settings_cursor = await db.execute(
+            """SELECT report_time, morning_tasks_time 
+               FROM settings WHERE user_id = ?""",
+            (user_id,)
+        )
+        settings_row = await settings_cursor.fetchone()
+        
+        report_time = settings_row["report_time"] if settings_row else Config.DEFAULT_REPORT_TIME
+        morning_tasks_time = settings_row["morning_tasks_time"] if settings_row else "08:50"
+        
+        users.append({
+            "user_id": user_id,
+            "report_time": report_time,
+            "morning_tasks_time": morning_tasks_time
+        })
+    
+    return users

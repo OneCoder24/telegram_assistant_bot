@@ -118,10 +118,22 @@ class GroqClient:
 def load_report_prompt() -> str:
     """Загружает шаблон промпта из файла"""
     prompt_path = Config.PROMPT_PATH
-    
+
     if not prompt_path.exists():
         logger.warning(f"Файл промпта не найден: {prompt_path}, используется встроенный")
         return _default_prompt()
+
+    return prompt_path.read_text(encoding="utf-8")
+
+
+def load_weekly_report_prompt() -> str:
+    """Загружает шаблон промпта для еженедельного отчёта"""
+    from pathlib import Path
+    prompt_path = Path(__file__).parent.parent / "prompts" / "weekly_report.txt"
+    
+    if not prompt_path.exists():
+        logger.warning(f"Файл промпта еженедельного отчёта не найден: {prompt_path}")
+        return "Составь еженедельный отчёт на основе заметок:\n{notes}"
     
     return prompt_path.read_text(encoding="utf-8")
 
