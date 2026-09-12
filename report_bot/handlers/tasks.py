@@ -16,13 +16,22 @@ logger = logging.getLogger(__name__)
 async def cmd_add_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Добавление задачи — ожидает текст следующим сообщением"""
     context.user_data['adding_task'] = True
-    await update.message.reply_text(
-        "✅ Режим добавления задачи\n\n"
-        "Отправьте текст задачи.\n"
+    
+    # Определяем метод ответа в зависимости от типа update
+    if update.callback_query:
+        reply_func = update.callback_query.edit_message_text
+    else:
+        reply_func = update.message.reply_text
+    
+    await reply_func(
+        "✅ <b>Добавление задачи</b>\n\n"
+        "Отправьте текст или голосовое сообщение с задачей.\n\n"
         "Примеры:\n"
         "• Закончить отчёт по проекту\n"
         "• Купить продукты\n"
-        "• Позвонить врачу"
+        "• Позвонить врачу\n\n"
+        "<i>Задача будет добавлена в список ваших задач.</i>",
+        parse_mode="HTML"
     )
 
 

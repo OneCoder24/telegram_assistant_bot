@@ -21,13 +21,22 @@ groq_client = GroqClient()
 async def cmd_add_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Добавление напоминания — ожидает текст следующим сообщением"""
     context.user_data['adding_reminder'] = True
-    await update.message.reply_text(
-        "⏰ Режим добавления напоминания\n\n"
-        "Отправьте текст напоминания на естественном языке.\n"
+    
+    # Определяем метод ответа в зависимости от типа update
+    if update.callback_query:
+        reply_func = update.callback_query.edit_message_text
+    else:
+        reply_func = update.message.reply_text
+    
+    await reply_func(
+        "⏰ <b>Добавление напоминания</b>\n\n"
+        "Отправьте текст или голосовое сообщение с напоминанием.\n\n"
         "Примеры:\n"
         "• Завтра в 15:00 позвонить клиенту\n"
         "• Через 2 часа встреча с командой\n"
-        "• В пятницу сдать отчёт"
+        "• В пятницу сдать отчёт\n\n"
+        "<i>Бот автоматически определит дату и время из вашего сообщения.</i>",
+        parse_mode="HTML"
     )
 
 
