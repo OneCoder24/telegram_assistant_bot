@@ -95,22 +95,23 @@ async def cmd_list_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def callback_task_complete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Отметить задачу как выполненную"""
     query = update.callback_query
-    await query.answer()
-    
+
     task_id = int(query.data.split("_")[-1])
     user_id = query.from_user.id
-    
+
     try:
         success = await db.mark_task_completed(user_id, task_id)
-        
+
         if success:
-            await query.edit_message_text(f"✅ Задача #{task_id} отмечена как выполненная!")
+            await query.answer(f"✅ Задача #{task_id} отмечена как выполненная", show_alert=False)
             logger.info(f"Пользователь {user_id} отметил задачу #{task_id} как выполненную")
+            # Обновляем список задач
+            await cmd_list_tasks(update, context)
         else:
-            await query.edit_message_text("❌ Задача не найдена.")
+            await query.answer("❌ Задача не найдена", show_alert=True)
     except Exception as e:
         logger.error(f"Ошибка при отметке задачи: {e}")
-        await query.edit_message_text("⚠️ Ошибка при обновлении задачи.")
+        await query.answer("⚠️ Ошибка при обновлении задачи", show_alert=True)
 
 
 async def callback_task_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -134,22 +135,23 @@ async def callback_task_edit(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def callback_task_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Удаление задачи"""
     query = update.callback_query
-    await query.answer()
-    
+
     task_id = int(query.data.split("_")[-1])
     user_id = query.from_user.id
-    
+
     try:
         success = await db.delete_task(user_id, task_id)
-        
+
         if success:
-            await query.edit_message_text(f"🗑 Задача #{task_id} удалена.")
+            await query.answer(f"🗑 Задача #{task_id} удалена", show_alert=False)
             logger.info(f"Пользователь {user_id} удалил задачу #{task_id}")
+            # Обновляем список задач
+            await cmd_list_tasks(update, context)
         else:
-            await query.edit_message_text("❌ Задача не найдена.")
+            await query.answer("❌ Задача не найдена", show_alert=True)
     except Exception as e:
         logger.error(f"Ошибка при удалении задачи: {e}")
-        await query.edit_message_text("⚠️ Ошибка при удалении задачи.")
+        await query.answer("⚠️ Ошибка при удалении задачи", show_alert=True)
 
 
 async def handle_task_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -89,23 +89,24 @@ async def cmd_list_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def callback_delete_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Удаление напоминания"""
     query = update.callback_query
-    await query.answer()
-    
+
     # Извлекаем ID напоминания из callback_data
     reminder_id = int(query.data.split("_")[-1])
     user_id = query.from_user.id
-    
+
     try:
         success = await db.delete_reminder(user_id, reminder_id)
-        
+
         if success:
-            await query.edit_message_text(f"🗑 Напоминание #{reminder_id} удалено.")
+            await query.answer(f"🗑 Напоминание #{reminder_id} удалено", show_alert=False)
             logger.info(f"Пользователь {user_id} удалил напоминание #{reminder_id}")
+            # Обновляем список напоминаний
+            await cmd_list_reminders(update, context)
         else:
-            await query.edit_message_text("❌ Напоминание не найдено.")
+            await query.answer("❌ Напоминание не найдено", show_alert=True)
     except Exception as e:
         logger.error(f"Ошибка при удалении напоминания: {e}")
-        await query.edit_message_text("⚠️ Ошибка при удалении напоминания.")
+        await query.answer("⚠️ Ошибка при удалении напоминания", show_alert=True)
 
 
 async def handle_reminder_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -532,32 +532,33 @@ async def callback_survey_skip_all(update: Update, context: ContextTypes.DEFAULT
 async def callback_delete_note(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Удаление конкретной заметки"""
     query = update.callback_query
-    await query.answer()
-    
+
     # Извлекаем ID заметки из callback_data
     note_id = int(query.data.split("_")[-1])
     user_id = query.from_user.id
-    
+
     try:
         # Удаляем заметку из БД
         import aiosqlite
         from config import Config
-        
+
         async with aiosqlite.connect(Config.DATABASE_PATH) as db_conn:
             cursor = await db_conn.execute(
                 "DELETE FROM notes WHERE id = ? AND user_id = ?",
                 (note_id, user_id)
             )
             await db_conn.commit()
-            
+
             if cursor.rowcount > 0:
-                await query.edit_message_text(f"🗑 Заметка #{note_id} удалена.")
+                await query.answer(f"🗑 Заметка #{note_id} удалена", show_alert=False)
                 logger.info(f"Пользователь {user_id} удалил заметку #{note_id}")
+                # Обновляем список заметок
+                await cmd_list(update, context)
             else:
-                await query.edit_message_text("❌ Заметка не найдена.")
+                await query.answer("❌ Заметка не найдена", show_alert=True)
     except Exception as e:
         logger.error(f"Ошибка при удалении заметки: {e}")
-        await query.edit_message_text("⚠️ Ошибка при удалении заметки.")
+        await query.answer("⚠️ Ошибка при удалении заметки", show_alert=True)
 
 
 async def callback_edit_note(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
