@@ -52,11 +52,11 @@ class GroqClient:
         }
         
         try:
-            # Добавлен параметр proxies
-            async with httpx.AsyncClient(timeout=self.timeout, proxies=self.proxy_url) as client:
+            # Используем proxy вместо proxies (новый API httpx)
+            async with httpx.AsyncClient(timeout=self.timeout, proxy=self.proxy_url) as client:
                 response = await client.post(url, json=payload, headers=headers)
                 response.raise_for_status()
-                
+
                 data = response.json()
                 return data["choices"][0]["message"]["content"]
                 
@@ -87,12 +87,12 @@ class GroqClient:
         }
         
         try:
-            # Добавлен параметр proxies
-            async with httpx.AsyncClient(timeout=self.timeout, proxies=self.proxy_url) as client:
+            # Используем proxy вместо proxies (новый API httpx)
+            async with httpx.AsyncClient(timeout=self.timeout, proxy=self.proxy_url) as client:
                 with open(audio_file_path, "rb") as audio_file:
                     files = {"file": ("voice.ogg", audio_file, "audio/ogg")}
                     data = {"model": Config.GROQ_WHISPER_MODEL}
-                    
+
                     response = await client.post(
                         url,
                         files=files,
@@ -100,7 +100,7 @@ class GroqClient:
                         headers=headers
                     )
                     response.raise_for_status()
-                    
+
                     result = response.json()
                     return result.get("text")
                     

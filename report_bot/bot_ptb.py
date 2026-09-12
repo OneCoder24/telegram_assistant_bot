@@ -406,23 +406,29 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Показать все заметки за сегодня с кнопками удаления"""
     user_id = update.effective_user.id
     today = date.today()
-    
+
     notes = await db.get_notes_by_date(user_id, today)
-    
+
+    # Определяем метод ответа в зависимости от типа update
+    if update.callback_query:
+        reply_func = update.callback_query.edit_message_text
+    else:
+        reply_func = update.message.reply_text
+
     if not notes:
-        await update.message.reply_text("📭 За сегодня заметок нет.")
+        await reply_func("📭 За сегодня заметок нет.")
         return
-    
+
     # Формируем список заметок с ID и inline-кнопками удаления
     lines = [f"📝 <b>Заметки за {today.strftime('%d.%m.%Y')}:</b>\n"]
-    
+
     # Создаём inline-клавиатуру с кнопками удаления и исправления для каждой заметки
     keyboard = []
     for i, note in enumerate(notes):
         timestamp = note["timestamp"][11:16]  # Извлекаем HH:MM из ISO формата
         note_type = {"text": "📝", "voice": "🎤", "photo": "📷"}.get(note["type"], "📝")
         lines.append(f"#{note['id']} {note_type} <code>{timestamp}</code> — {note['text']}")
-        
+
         # Кнопки удаления и исправления для каждой заметки
         keyboard.append([
             InlineKeyboardButton(
@@ -434,12 +440,12 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 callback_data=f"delete_note_{note['id']}"
             )
         ])
-    
+
     lines.append(f"\n<i>Всего: {len(notes)} заметок</i>")
-    
+
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(
+
+    await reply_func(
         "\n".join(lines),
         parse_mode="HTML",
         reply_markup=reply_markup
@@ -643,12 +649,18 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     """Генерация отчёта за указанную дату"""
     from datetime import timedelta
     import re
-    
+
     user_id = update.effective_user.id
-    
+
+    # Определяем метод ответа в зависимости от типа update
+    if update.callback_query:
+        reply_func = update.callback_query.edit_message_text
+    else:
+        reply_func = update.message.reply_text
+
     # Парсим аргументы команды
     args = " ".join(context.args) if context.args else ""
-    
+
     # Определяем дату
     if not args:
         target_date = date.today()
@@ -660,10 +672,10 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         try:
             target_date = date.fromisoformat(args)
         except ValueError:
-            await update.message.reply_text("❌ Неверный формат даты.")
+            await reply_func("❌ Неверный формат даты.")
             return
     else:
-        await update.message.reply_text(
+        await reply_func(
             "❌ Неверный формат даты.\n\n"
             "Примеры:\n"
             "/report — отчёт за сегодня\n"
@@ -671,45 +683,45 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             "/report 2024-01-15 — отчёт за конкретную дату"
         )
         return
-    
+
     # Уведомляем о начале генерации
-    processing_msg = await update.message.reply_text("🤖 Генерирую отчёт...")
-    
+    processing_msg = await reply_func("🤖 Генерирую отчёт...")
+
     try:
         # Получаем заметки за дату
         notes = await db.get_notes_by_date(user_id, target_date)
-        
+
         if not notes:
             await processing_msg.edit_text(
                 f"📭 За {target_date.strftime('%d.%m.%Y')} заметок нет. "
                 f"Нечего включать в отчёт."
             )
             return
-        
+
         # Формируем текст заметок для промпта
         notes_lines = []
         for note in notes:
             timestamp = note["timestamp"][11:16]  # HH:MM
             notes_lines.append(f"[{timestamp}] {note['text']}")
-        
+
         notes_text = "\n".join(notes_lines)
-        
+
         # Загружаем промпт
         prompt_template = load_report_prompt()
         system_prompt = prompt_template.replace("{date}", target_date.strftime("%d.%m.%Y"))
-        
+
         # Генерируем отчёт через LLM
         report_text = await groq_client.generate_report(system_prompt, notes_text)
-        
+
         if not report_text:
             await processing_msg.edit_text(
                 "⚠️ Не удалось сгенерировать отчёт. Попробуйте позже."
             )
             return
-        
+
         # Сохраняем отчёт в БД
         await db.save_report(user_id, target_date, report_text)
-        
+
         # Отправляем отчёт
         await processing_msg.edit_text(
             f"📋 <b>Отчёт за {target_date.strftime('%d.%m.%Y')}</b>\n\n"
@@ -717,7 +729,7 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             parse_mode="HTML"
         )
         logger.info(f"Сгенерирован отчёт для пользователя {user_id} за {target_date}")
-        
+
     except Exception as e:
         logger.error(f"Ошибка при генерации отчёта: {e}")
         await processing_msg.edit_text(
