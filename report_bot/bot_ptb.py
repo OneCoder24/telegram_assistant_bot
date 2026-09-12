@@ -105,9 +105,13 @@ async def show_work_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     text = "💼 <b>Работа</b>\n\nВыберите действие:"
-    await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
 
 
 async def show_personal_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -126,17 +130,21 @@ async def show_personal_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     text = "🏠 <b>Личное</b>\n\nВыберите действие:"
-    await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
 
 
 async def show_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Показывает меню настроек"""
-    user_id = update.callback_query.from_user.id
+    user_id = update.callback_query.from_user.id if update.callback_query else update.effective_user.id
     report_time = await db.get_report_time(user_id)
     morning_time = await db.get_morning_tasks_time(user_id)
-    
+
     keyboard = [
         [
             InlineKeyboardButton(f"⏰ Время отчёта ({report_time})", callback_data="settings_report_time")
@@ -149,9 +157,13 @@ async def show_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     text = "⚙️ <b>Настройки</b>\n\nТекущие настройки:"
-    await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=reply_markup)
 
 
 async def callback_menu_navigation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -194,6 +206,44 @@ async def callback_menu_navigation(update: Update, context: ContextTypes.DEFAULT
         await query.answer("Отправьте /settime HH:MM для изменения времени", show_alert=True)
     elif callback_data == "settings_morning_time":
         await query.answer("Отправьте /setmorningtime HH:MM для изменения времени", show_alert=True)
+    elif callback_data.startswith("view_report_"):
+        # Показываем отчёт из истории
+        report_date_str = callback_data.replace("view_report_", "")
+        await show_report_from_history(update, context, report_date_str)
+
+
+async def show_report_from_history(update: Update, context: ContextTypes.DEFAULT_TYPE, report_date_str: str) -> None:
+    """Показывает отчёт из истории по дате"""
+    from datetime import datetime as dt
+    user_id = update.callback_query.from_user.id
+    
+    try:
+        report_date = dt.strptime(report_date_str, "%Y-%m-%d").date()
+    except ValueError:
+        await update.callback_query.edit_message_text("❌ Неверный формат даты")
+        return
+    
+    # Получаем отчёт из БД
+    report_text = await db.get_report(user_id, report_date)
+    
+    if not report_text:
+        await update.callback_query.edit_message_text(
+            f"📭 Отчёт за {report_date_str} не найден.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data="menu_history")]])
+        )
+        return
+    
+    keyboard = [
+        [InlineKeyboardButton("◀️ К истории", callback_data="menu_history")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="menu_main")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.callback_query.edit_message_text(
+        f"📋 <b>Отчёт за {report_date_str}</b>\n\n{report_text}",
+        parse_mode="HTML",
+        reply_markup=reply_markup
+    )
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -228,25 +278,35 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Показывает историю отчётов"""
     user_id = update.effective_user.id if update.message else update.callback_query.from_user.id
-    
+
     # Получаем историю отчётов из БД
     reports = await db.get_user_reports(user_id, limit=10)
-    
+
     if not reports:
         text = "📊 <b>История отчётов</b>\n\nУ вас пока нет сохранённых отчётов."
+        keyboard = [[InlineKeyboardButton("◀️ Назад", callback_data="menu_main")]]
     else:
         lines = ["📊 <b>История отчётов</b>\n"]
+        keyboard = []
+        
         for report in reports:
             report_date = report["date"]
-            lines.append(f"• <code>{report_date}</code> — /report_{report_date}")
-        lines.append("\n<i>Нажмите на дату для просмотра отчёта</i>")
+            report_type = "📊" if report.get("report_type") == "weekly" else "📋"
+            lines.append(f"{report_type} <code>{report_date}</code>")
+            
+            # Добавляем кнопку для просмотра отчёта
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"📄 Посмотреть отчёт за {report_date}",
+                    callback_data=f"view_report_{report_date}"
+                )
+            ])
+        
+        keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data="menu_main")])
         text = "\n".join(lines)
-    
-    keyboard = [
-        [InlineKeyboardButton("◀️ Назад", callback_data="menu_main")]
-    ]
+
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     if update.callback_query:
         await update.callback_query.edit_message_text(text, parse_mode="HTML", reply_markup=reply_markup)
     else:
@@ -974,7 +1034,7 @@ def main() -> None:
             application.add_handler(CallbackQueryHandler(callback_survey_skip_all, pattern="^survey_skip_all$"))
             
             # Регистрируем обработчик навигации по меню
-            application.add_handler(CallbackQueryHandler(callback_menu_navigation, pattern=r"^(menu_|work_|personal_|settings_)"))
+            application.add_handler(CallbackQueryHandler(callback_menu_navigation, pattern=r"^(menu_|work_|personal_|settings_|view_report_)"))
             
             # Регистрируем обработчики заметок (порядок важен!)
             application.add_handler(MessageHandler(filters.VOICE, handle_voice_note))
