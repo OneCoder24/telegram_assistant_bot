@@ -29,11 +29,17 @@ async def cmd_add_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def cmd_list_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Показать все задачи с кнопками управления"""
     user_id = update.effective_user.id
-    
+
     tasks = await db.get_all_tasks(user_id)
-    
+
+    # Определяем метод ответа в зависимости от типа update
+    if update.callback_query:
+        reply_func = update.callback_query.edit_message_text
+    else:
+        reply_func = update.message.reply_text
+
     if not tasks:
-        await update.message.reply_text("✅ У вас нет задач.")
+        await reply_func("✅ У вас нет задач.")
         return
     
     # Формируем список задач
@@ -67,10 +73,10 @@ async def cmd_list_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         keyboard.append(buttons)
     
     lines.append(f"\n<i>Всего: {len(tasks)} задач</i>")
-    
+
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(
+
+    await reply_func(
         "\n".join(lines),
         parse_mode="HTML",
         reply_markup=reply_markup

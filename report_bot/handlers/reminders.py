@@ -34,24 +34,30 @@ async def cmd_add_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 async def cmd_list_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Показать все напоминания"""
     user_id = update.effective_user.id
-    
+
     reminders = await db.get_all_reminders(user_id)
-    
+
+    # Определяем метод ответа в зависимости от типа update
+    if update.callback_query:
+        reply_func = update.callback_query.edit_message_text
+    else:
+        reply_func = update.message.reply_text
+
     if not reminders:
-        await update.message.reply_text("⏰ У вас нет напоминаний.")
+        await reply_func("⏰ У вас нет напоминаний.")
         return
-    
+
     # Формируем список напоминаний
     lines = ["⏰ <b>Ваши напоминания:</b>\n"]
     keyboard = []
-    
+
     for reminder in reminders:
         reminder_time = datetime.fromisoformat(reminder["reminder_time"])
         time_str = reminder_time.strftime("%d.%m.%Y %H:%M")
         status = "✅" if reminder["sent"] else "⏳"
-        
+
         lines.append(f"{status} #{reminder['id']} <code>{time_str}</code> — {reminder['text']}")
-        
+
         # Кнопка удаления для каждого напоминания
         keyboard.append([
             InlineKeyboardButton(
@@ -59,12 +65,12 @@ async def cmd_list_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 callback_data=f"delete_reminder_{reminder['id']}"
             )
         ])
-    
+
     lines.append(f"\n<i>Всего: {len(reminders)} напоминаний</i>")
-    
+
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(
+
+    await reply_func(
         "\n".join(lines),
         parse_mode="HTML",
         reply_markup=reply_markup
