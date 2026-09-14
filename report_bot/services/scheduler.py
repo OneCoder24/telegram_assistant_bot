@@ -22,52 +22,58 @@ scheduler = AsyncIOScheduler()
 groq_client = GroqClient()
 
 
-async def send_task_survey(bot: Bot, user_id: int) -> None:
-    """Отправляет опросник с задачами перед генерацией отчёта"""
-    try:
-        # Получаем задачи, выполненные сегодня
-        completed_tasks = await db.get_completed_tasks_today(user_id)
-        
-        if not completed_tasks:
-            logger.info(f"У пользователя {user_id} нет выполненных задач за сегодня — опросник не отправлен")
-            return
-        
-        # Формируем опросник с кнопками
-        lines = ["📊 <b>Опросник перед отчётом</b>\n\n"]
-        lines.append("Отметьте задачи, которые нужно включить в отчёт:\n")
-        
-        keyboard = []
-        for task in completed_tasks:
-            completed_time = datetime.fromisoformat(task["completed_at"]).strftime("%H:%M")
-            lines.append(f"✅ #{task['id']} <code>{completed_time}</code> — {task['text']}")
-            
-            # Кнопка для включения в отчёт
+def build_task_survey(all_tasks: list[dict]) -> tuple[str, InlineKeyboardMarkup]:
+    """Формирует текст и inline-клавиатуру опросника задач"""
+    lines = ["📊 <b>Отметьте выполненные задачи</b>\n\n"]
+    lines.append("Нажмите на задачу, чтобы отметить её как выполненную:\n")
+
+    keyboard = []
+    for task in all_tasks:
+        created = datetime.fromisoformat(task["created_at"]).strftime("%d.%m")
+        status = "✅" if task["completed"] else "⏳"
+        lines.append(f"{status} #{task['id']} <code>{created}</code> — {task['text']}")
+
+        # Кнопка для отметки задачи как выполненной (только для невыполненных)
+        if not task["completed"]:
             keyboard.append([
                 InlineKeyboardButton(
-                    f"📋 Включить #{task['id']} в отчёт",
-                    callback_data=f"survey_include_{task['id']}"
+                    f"✅ Выполнено #{task['id']}",
+                    callback_data=f"survey_mark_completed_{task['id']}"
                 )
             ])
-        
-        # Кнопка "Пропустить все"
-        keyboard.append([
-            InlineKeyboardButton(
-                "❌ Не включать ничего",
-                callback_data="survey_skip_all"
-            )
-        ])
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
+
+    # Кнопка "Пропустить все"
+    keyboard.append([
+        InlineKeyboardButton(
+            "❌ Ничего не выполнено",
+            callback_data="survey_skip_all"
+        )
+    ])
+
+    return "\n".join(lines), InlineKeyboardMarkup(keyboard)
+
+
+async def send_task_survey(bot: Bot, user_id: int) -> None:
+    """Отправляет список всех задач перед генерацией отчёта для отметки выполненных"""
+    try:
+        # Получаем ВСЕ задачи пользователя
+        all_tasks = await db.get_all_tasks(user_id)
+
+        if not all_tasks:
+            logger.info(f"У пользователя {user_id} нет задач — опросник не отправлен")
+            return
+
+        text, reply_markup = build_task_survey(all_tasks)
+
         await bot.send_message(
             chat_id=user_id,
-            text="\n".join(lines),
+            text=text,
             parse_mode="HTML",
             reply_markup=reply_markup
         )
-        
-        logger.info(f"Отправлен опросник пользователю {user_id} с {len(completed_tasks)} задачами")
-        
+
+        logger.info(f"Отправлен опросник пользователю {user_id} с {len(all_tasks)} задачами")
+
     except Exception as e:
         logger.error(f"Ошибка при отправке опросника пользователю {user_id}: {e}")
 

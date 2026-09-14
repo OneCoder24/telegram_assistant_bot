@@ -22,6 +22,7 @@ from config import Config, validate_config
 import database as db
 from services.groq_client import GroqClient, load_report_prompt, load_weekly_report_prompt
 from services.scheduler import (
+    build_task_survey,
     start_scheduler,
     shutdown_scheduler,
     schedule_daily_reports,
@@ -516,17 +517,41 @@ async def callback_survey_include(update: Update, context: ContextTypes.DEFAULT_
     await query.answer(f"✅ Задача #{task_id} будет включена в отчёт", show_alert=True)
     logger.info(f"Пользователь {user_id} включил задачу #{task_id} в отчёт")
 
+async def callback_survey_mark_completed(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Отметка задачи как выполненной прямо из опросника перед отчётом"""
+    query = update.callback_query
+
+    task_id = int(query.data.split("_")[-1])
+    user_id = query.from_user.id
+
+    try:
+        success = await db.mark_task_completed(user_id, task_id)
+
+        if success:
+            await query.answer(f"✅ Задача #{task_id} отмечена как выполненная", show_alert=False)
+            logger.info(f"Пользователь {user_id} отметил задачу #{task_id} как выполненную из опросника")
+
+            # Обновляем опросник на месте — задача отобразится как выполненная
+            all_tasks = await db.get_all_tasks(user_id)
+            if all_tasks:
+                text, reply_markup = build_task_survey(all_tasks)
+                await query.edit_message_text(text, parse_mode="HTML", reply_markup=reply_markup)
+        else:
+            await query.answer("❌ Задача не найдена", show_alert=True)
+    except Exception as e:
+        logger.error(f"Ошибка при отметке задачи из опросника: {e}")
+        await query.answer("⚠️ Ошибка при обновлении задачи", show_alert=True)
 
 async def callback_survey_skip_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Пропустить все задачи в отчёте"""
+    """Ничего не отмечать в опроснике"""
     query = update.callback_query
     await query.answer()
     
-    # Очищаем список задач для отчёта
+    # Очищаем список задач для отчёта (устаревший механизм, оставлен для совместимости)
     context.user_data['tasks_for_report'] = []
     
-    await query.edit_message_text("❌ Задачи не будут включены в отчёт.")
-    logger.info(f"Пользователь {query.from_user.id} пропустил все задачи в отчёте")
+    await query.edit_message_text("❌ Ничего не отмечено — задачи остались без изменений.")
+    logger.info(f"Пользователь {query.from_user.id} ничего не отметил в опроснике")
 
 
 async def callback_delete_note(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1044,6 +1069,7 @@ def main() -> None:
             application.add_handler(CallbackQueryHandler(callback_task_edit, pattern=r"^task_edit_\d+$"))
             application.add_handler(CallbackQueryHandler(callback_task_delete, pattern=r"^task_delete_\d+$"))
             application.add_handler(CallbackQueryHandler(callback_survey_include, pattern=r"^survey_include_\d+$"))
+            application.add_handler(CallbackQueryHandler(callback_survey_mark_completed, pattern=r"^survey_mark_completed_\d+$"))
             application.add_handler(CallbackQueryHandler(callback_survey_skip_all, pattern="^survey_skip_all$"))
             
             # Регистрируем обработчик навигации по меню
